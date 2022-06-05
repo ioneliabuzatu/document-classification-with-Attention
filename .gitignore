@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+tokenizer.json
+wandb/
+runs/
+.idea/
