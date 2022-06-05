@@ -1,43 +1,22 @@
-import experiment_buddy
+import getpass
 import os
 import random
 from pathlib import Path
-from typing import Union, Tuple, List
 
+import experiment_buddy
 import numpy as np
-import pandas as pd
 import torch
-import torch.nn.functional as F
-from tokenizers import Tokenizer
-from tokenizers.decoders import WordPiece as WordPieceDecoder
-from tokenizers.models import WordPiece
-from tokenizers.normalizers import NFKC, BertNormalizer, Sequence
-from tokenizers.pre_tokenizers import BertPreTokenizer
-from tokenizers.trainers import WordPieceTrainer
-from torch import nn, Tensor, optim
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-from torch.nn.utils.rnn import pad_sequence
 from torch.optim import Adam
-from torch.optim import Optimizer
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset
-from tqdm import tqdm
-import getpass
+
 from classification_baseline_attention_model import ClassificationAttentionModel
-from classification_baseline_attention_model import get_tokenizer
 from classification_baseline_attention_model import get_initial_embedding
 from classification_baseline_attention_model import get_loaders
+from classification_baseline_attention_model import get_tokenizer
 from classification_baseline_attention_model import train_and_evaluate
-
-# from classification_baseline_attention_model import
-# from logger import Logger
-# from tensor_utils import generate_padding_mask
-# from training_watcher import TrainingWatcher
-
 
 experiment_buddy.register_defaults({'task': 'document classification with attention'})
 writer = experiment_buddy.deploy(
-    host="", disabled=False, wandb_kwargs={'project': "nlp"},
+    host="mila", disabled=False, wandb_kwargs={'project': "nlp"},
     sweep_definition="sweep.yaml"
 )
 
@@ -59,7 +38,6 @@ elif whoami == 'ionelia.buzatu':
     embedding_save_path = f"{home}/nlp/initial_embedding.npy"
     tokenizer_save_path = f"{home}/nlp/tokenizer.json"
 
-
 torch.manual_seed(0)
 np.random.seed(0)
 random.seed(0)
@@ -69,7 +47,6 @@ print("device:", device)
 os.system('nvidia-smi')
 name_dataset_size = "small"
 optimizers = {'adam': Adam, 'sgd': torch.optim.SGD}
-
 
 batch_size = 32
 document_length = -1
