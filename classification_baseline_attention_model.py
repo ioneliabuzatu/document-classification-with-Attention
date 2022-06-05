@@ -22,10 +22,6 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-# from logger import Logger
-# from tensor_utils import generate_padding_mask
-# from training_watcher import TrainingWatcher
-
 UNK_TOKEN = '[UNK]'
 PAD_TOKEN = '[PAD]'
 
@@ -117,7 +113,6 @@ def get_tokenizer(data=None, data_path=None, save_path=None, vocab_size=25_000) 
                 line = line.split(',', 1)[1]
                 text = line.rsplit(',', 1)[0].strip('"')
                 data.append(text)
-                # data.append(preprocess_line(line)[0])
 
     tokenizer = Tokenizer(WordPiece(vocab={UNK_TOKEN: 1}, unk_token=UNK_TOKEN))
 
@@ -186,8 +181,7 @@ def accuracy():
     return metric
 
 
-def train_and_evaluate(model, train_loader, val_loader, test_loader, logger, weight_decay=0., name_model='test_run'):
-    optimizer = Adam(model.parameters(), lr=1e-4, weight_decay=weight_decay)
+def train_and_evaluate(model, optimizer, train_loader, val_loader, test_loader, logger):
     # logger = Logger(model=model, log_dir=f'../runs/{name_model}')
 
     model.fit(
@@ -195,13 +189,12 @@ def train_and_evaluate(model, train_loader, val_loader, test_loader, logger, wei
         val_loader=val_loader,
         optimizer=optimizer,
         logger=logger,
-        watcher=None, #TrainingWatcher(max_epochs=40),
         validation_metrics={
             'accuracy': accuracy()
         }
     )
 
-    model.resume_from_checkpoint(logger.best_checkpoint_path)
+    # model.resume_from_checkpoint(logger.best_checkpoint_path)
 
     _, metrics = model.evaluate(
         loader=test_loader,
@@ -225,7 +218,8 @@ class ClassificationAttentionModel(nn.Module):
             freeze_embeddings: bool = False,
             bidirectional: bool = True,
             attention_type: str = 'dot',
-            epochs = 10,
+            epochs=10,
+            patience=5
     ):
         """
         :attention_type: can be either 'dot' or 'additive'
@@ -234,6 +228,8 @@ class ClassificationAttentionModel(nn.Module):
 
         self.batch_size = batch_size
         self.epochs = epochs
+        self.patience = patience
+        self.best_accuracy_so_far = None
 
         self.vocab_size, self.embedding_size = embedding_weights.shape
         self.embedding = nn.Embedding(self.vocab_size, self.embedding_size)
@@ -265,10 +261,12 @@ class ClassificationAttentionModel(nn.Module):
 
         self.query = nn.Parameter(torch.randn(size=(1, 1, self.query_dim)))
         self.scale = 1.0 / np.sqrt(self.query_dim)
+
         if attention_type == 'additive':
             self.W_queries = nn.Linear(self.query_dim, self.query_dim, bias=False)
             self.W_values = nn.Linear(self.query_dim, self.query_dim, bias=False)
             self.u = nn.Parameter(torch.randn(1, self.query_dim, 1))
+
         elif attention_type == 'multiplicative':
             self.W = nn.Parameter(torch.randn(self.query_dim, self.query_dim))
 
@@ -315,11 +313,7 @@ class ClassificationAttentionModel(nn.Module):
         return mask
 
     def dot_product_attention(self, queries, values) -> Tensor:
-        sequence_len = values.shape[1]
-        keys = values.permute(0, 2, 1)
-        assert keys.shape == (self.batch_size, self.hidden_size, sequence_len)
-        attention_weights = queries @ keys
-        assert attention_weights.shape == (self.batch_size, 1, sequence_len)
+        attention_weights = queries @ values.permute(0, 2, 1)
         return attention_weights
 
     def multiplicative_attention(self, queries, values) -> Tensor:
@@ -337,54 +331,45 @@ class ClassificationAttentionModel(nn.Module):
     def device(self) -> torch.device:
         return self.embedding.weight.device
 
-    def fit(self, train_loader, val_loader, optimizer, watcher, logger, validation_metrics: Union[dict, None] = None):
+    def fit(self, train_loader, val_loader, optimizer, logger, validation_metrics: Union[dict, None] = None):
         if validation_metrics is None:
             validation_metrics = {}
 
         initial_loss, initial_accuracy = self.evaluate(loader=val_loader, metrics=validation_metrics)
-        logger.add_scalar("Validation_Loss", initial_loss, self.epochs)
-        logger.add_scalar("Validation_Accuracy", initial_accuracy['accuracy'], self.epochs)
-        self.epochs += 1
+        logger.add_scalar("validation_loss", initial_loss, 0)
+        logger.add_scalar("validation_accuracy", initial_accuracy['accuracy'], 0)
 
-        while True:
-            average_loss_epoch = self.__step(loader=train_loader, optimizer=optimizer, logger=logger)
-            logger.add_scalar("training_epochs_loss...", average_loss_epoch, self.epochs)
+        for epoch in tqdm(range(1, self.epochs)):
+            average_loss_epoch = self.__step(train_loader, optimizer)
             validation_loss, val_accuracy = self.evaluate(loader=val_loader, metrics=validation_metrics)
-            logger.add_scalar("Validation_Loss", validation_loss, self.epochs)
-            logger.add_scalar("Validation_Accuracy", val_accuracy['accuracy'], self.epochs)
-            self.epochs += 1
 
-            if watcher.should_stop_training(validation_loss):
-                break
+            logger.add_scalar("training_epochs_loss", average_loss_epoch, epoch-1)
+            logger.add_scalar("validation_loss", validation_loss, epoch)
+            logger.add_scalar("validation_accuracy", val_accuracy['accuracy'], epoch)
+            print(f"done epoch {epoch} accuracy | {val_accuracy['accuracy']}.")
 
-    def __step(self, loader: DataLoader, optimizer: Optimizer, logger) -> float:
+            # if watcher.should_stop_training(validation_loss):
+            #     break
+
+    def __step(self, data_loader, optimizer) -> float:
         self.train()
         average_loss = 0.
 
         progress_bar = tqdm(
-            loader,
+            data_loader,
             ascii=' -=',
             bar_format='{n_fmt}/{total_fmt} [{bar:40}{bar:-40b}] - {elapsed}s - average loss: {postfix[0][average_loss]:.3f} - batch loss: {postfix[0][batch_loss]:.3f}',
             postfix=[dict(average_loss=0, batch_loss=0)]
         )
 
-        for i, batch in enumerate(progress_bar):
+        for i, batch in enumerate(data_loader):
             inputs, targets = self.__unpack_batch(batch)
-
             optimizer.zero_grad()
             loss, _ = self._calculate_loss(inputs, targets)
             loss.backward()
             optimizer.step()
-
             loss = loss.item()
-            # logger.batch_loss(loss)
             average_loss += (loss - average_loss) / (i + 1)
-
-            progress_bar.postfix[0]['average_loss'] = average_loss
-            progress_bar.postfix[0]['batch_loss'] = loss
-            progress_bar.update()
-
-        # logger.epoch_loss(average_loss)
 
         return average_loss
 
@@ -433,6 +418,28 @@ class ClassificationAttentionModel(nn.Module):
 
     def resume_from_checkpoint(self, path: Union[Path, str]):
         self.load_state_dict(torch.load(path, map_location=self.device))
+
+    def early_stopping(self, model, curr_validation_accuracy):  # TODO fix it
+        """
+        Stops the training if validation accuracy doesn't improve after a given patience.
+        """
+
+        if self.best_accuracy_so_far is None:
+            self.best_accuracy_so_far = curr_validation_accuracy
+            torch.save(self.state_dict(), self.path)
+            # self.val_acc_max = val_acc
+
+        elif curr_validation_accuracy < self.best_score + self.delta:
+            self.counter += 1
+            print(f'EarlyStopper counter: {self.counter} out of {self.patience}')
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_score = curr_validation_accuracy
+            print(f'Validation accuracy increased ({self.val_acc_max:.6f} --> {val_acc:.6f}).  Saving model ...')
+            torch.save(model.state_dict(), self.path)
+            self.val_acc_max = val_acc
+            self.counter = 0
 
 
 def get_loaders(root_data, name_dataset_size, batch_size, tokenizer, document_length=-1):
