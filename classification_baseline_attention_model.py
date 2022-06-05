@@ -182,7 +182,6 @@ def accuracy():
 
 
 def train_and_evaluate(model, optimizer, train_loader, val_loader, test_loader, logger):
-    # logger = Logger(model=model, log_dir=f'../runs/{name_model}')
 
     model.fit(
         train_loader=train_loader,
@@ -219,7 +218,8 @@ class ClassificationAttentionModel(nn.Module):
             bidirectional: bool = True,
             attention_type: str = 'dot',
             epochs=10,
-            patience=5
+            patience=5,
+            checkpoint_path=None
     ):
         """
         :attention_type: can be either 'dot' or 'additive'
@@ -230,6 +230,10 @@ class ClassificationAttentionModel(nn.Module):
         self.epochs = epochs
         self.patience = patience
         self.best_accuracy_so_far = None
+        self.delta = 0.0
+        self.counter = 0
+        self.attention_type = attention_type
+        self.checkpoint_path = checkpoint_path
 
         self.vocab_size, self.embedding_size = embedding_weights.shape
         self.embedding = nn.Embedding(self.vocab_size, self.embedding_size)
@@ -256,7 +260,7 @@ class ClassificationAttentionModel(nn.Module):
             'additive': self.additive_attention,
             'multiplicative': self.multiplicative_attention
         }
-        self.calculate_attention_weights = single_head_attention_methods[attention_type]
+        self.calculate_attention_weights = single_head_attention_methods[self.attention_type]
         self.query_dim = self.hidden_size
 
         self.query = nn.Parameter(torch.randn(size=(1, 1, self.query_dim)))
@@ -343,24 +347,17 @@ class ClassificationAttentionModel(nn.Module):
             average_loss_epoch = self.__step(train_loader, optimizer)
             validation_loss, val_accuracy = self.evaluate(loader=val_loader, metrics=validation_metrics)
 
-            logger.add_scalar("training_epochs_loss", average_loss_epoch, epoch-1)
+            logger.add_scalar("training_epochs_loss", average_loss_epoch, epoch - 1)
             logger.add_scalar("validation_loss", validation_loss, epoch)
             logger.add_scalar("validation_accuracy", val_accuracy['accuracy'], epoch)
             print(f"done epoch {epoch} accuracy | {val_accuracy['accuracy']}.")
 
-            # if watcher.should_stop_training(validation_loss):
-            #     break
+            if self.early_stopping(validation_loss):
+                break
 
     def __step(self, data_loader, optimizer) -> float:
         self.train()
         average_loss = 0.
-
-        progress_bar = tqdm(
-            data_loader,
-            ascii=' -=',
-            bar_format='{n_fmt}/{total_fmt} [{bar:40}{bar:-40b}] - {elapsed}s - average loss: {postfix[0][average_loss]:.3f} - batch loss: {postfix[0][batch_loss]:.3f}',
-            postfix=[dict(average_loss=0, batch_loss=0)]
-        )
 
         for i, batch in enumerate(data_loader):
             inputs, targets = self.__unpack_batch(batch)
@@ -419,27 +416,29 @@ class ClassificationAttentionModel(nn.Module):
     def resume_from_checkpoint(self, path: Union[Path, str]):
         self.load_state_dict(torch.load(path, map_location=self.device))
 
-    def early_stopping(self, model, curr_validation_accuracy):  # TODO fix it
+    def early_stopping(self, curr_validation_accuracy):
         """
         Stops the training if validation accuracy doesn't improve after a given patience.
         """
 
         if self.best_accuracy_so_far is None:
+            self.counter = 0
             self.best_accuracy_so_far = curr_validation_accuracy
-            torch.save(self.state_dict(), self.path)
-            # self.val_acc_max = val_acc
+            torch.save(self.state_dict(), f"{self.attention_type}.{self.checkpoint_path}.best")
 
-        elif curr_validation_accuracy < self.best_score + self.delta:
+        elif curr_validation_accuracy < self.best_accuracy_so_far + self.delta:
             self.counter += 1
             print(f'EarlyStopper counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
-                self.early_stop = True
+                print("early stopping triggered. training stopped.")
+                return True
         else:
-            self.best_score = curr_validation_accuracy
-            print(f'Validation accuracy increased ({self.val_acc_max:.6f} --> {val_acc:.6f}).  Saving model ...')
-            torch.save(model.state_dict(), self.path)
-            self.val_acc_max = val_acc
+            print(f'Val acc increased ({self.best_accuracy_so_far:.6f} --> {curr_validation_accuracy:.6f}),model saved')
+            self.best_accuracy_so_far = curr_validation_accuracy
+            torch.save(self.state_dict(), self.path)
             self.counter = 0
+
+        return False
 
 
 def get_loaders(root_data, name_dataset_size, batch_size, tokenizer, document_length=-1):
