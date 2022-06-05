@@ -1,5 +1,5 @@
 program: run.py
-method: bayes
+method: random
 metric:
   name: validation_accuracy
   goal: maximize
@@ -9,3 +9,5 @@ parameters:
     max: 0.1
   optim:
     values: ["adam", "sgd"]
+  attention:
+    values: ['dot', 'additive', 'multiplicative']
