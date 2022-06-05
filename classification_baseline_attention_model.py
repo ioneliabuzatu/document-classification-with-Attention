@@ -64,7 +64,7 @@ class DocumentDataset(Dataset):
         return token_ids, torch.from_numpy(np.array(self.labels[index]))
 
     @staticmethod
-    def __preprocess_line(line: str) -> Tuple[str, int]:
+    def __preprocess_line(line) -> Tuple[str, int]:
         line = line.split(',', 1)[1]
         text, label = line.rsplit(',', 1)
         return text.strip('"'), int(label)
@@ -73,10 +73,10 @@ class DocumentDataset(Dataset):
     def num_classes(self) -> int:
         return len(self.classes)
 
-    def _tokenize_ids(self, text: str) -> np.ndarray:
+    def _tokenize_ids(self, text) -> np.ndarray:
         return np.array(self.tokenizer.encode(text).ids)
 
-    def find_examples(self, model, k: int = 2, seed: int = 42) -> Tuple[List[int], List[int]]:
+    def find_examples(self, model, k = 2, seed = 42) -> Tuple[List[int], List[int]]:
         correct = []
         misclassified = []
 
@@ -131,7 +131,7 @@ def get_tokenizer(data=None, data_path=None, save_path=None, vocab_size=25_000) 
     return tokenizer
 
 
-def pad_collate(padding_value: int):
+def pad_collate(padding_value):
     def collate_fn(batch: List[Tensor]):
         inputs, targets = zip(*batch)
         input_lengths = Tensor([len(x) for x in inputs])
@@ -144,7 +144,7 @@ def pad_collate(padding_value: int):
     return collate_fn
 
 
-def get_initial_embedding(path, tokenizer: Tokenizer, save_path: Union[str, Path, None] = None) -> nn.Embedding:
+def get_initial_embedding(path, tokenizer: Tokenizer, save_path= None) -> nn.Embedding:
     if save_path is not None and os.path.exists(save_path):
         weight = np.load(save_path)
         embedding = nn.Embedding(weight.shape[0], weight.shape[1])
@@ -253,7 +253,7 @@ class ClassificationAttentionModel(nn.Module):
                 self.hidden_size = hidden_size * 2
         else:
             self.backbone = None
-            self.hidden_size = self.embedding_size  # or hidden_size
+            self.hidden_size = self.embedding_size
 
         single_head_attention_methods = {
             'dot': self.dot_product_attention,
@@ -352,8 +352,8 @@ class ClassificationAttentionModel(nn.Module):
             logger.add_scalar("validation_accuracy", val_accuracy['accuracy'], epoch)
             print(f"done epoch {epoch} accuracy | {val_accuracy['accuracy']}.")
 
-            if self.early_stopping(validation_loss):
-                break
+            # if self.early_stopping(validation_loss): # TODO remember to put it back
+            #     break
 
     def __step(self, data_loader, optimizer) -> float:
         self.train()
@@ -405,7 +405,7 @@ class ClassificationAttentionModel(nn.Module):
 
         return inputs, targets
 
-    def _calculate_loss(self, inputs: Tuple[Tensor, Tensor], targets: Tensor, **kwargs) -> Tuple[Tensor, Tensor]:
+    def _calculate_loss(self, inputs: Tuple[Tensor, Tensor], targets: Tensor) -> Tuple[Tensor, Tensor]:
         logits, _ = self(inputs)
         return F.cross_entropy(logits, targets.long().to(self.device)), logits
 

@@ -55,6 +55,7 @@ hidden_size = 512
 lr = 1e-4
 which_optimizer = 'adam'
 attention = "dot"
+epochs = 50
 
 tokenizer = get_tokenizer(data_path=f'{root_data}.{name_dataset_size}.train.txt', save_path=tokenizer_save_path)
 embedding = get_initial_embedding(path=glove_path, tokenizer=tokenizer, save_path=embedding_save_path)
@@ -65,6 +66,7 @@ model = ClassificationAttentionModel(
     hidden_size=hidden_size,
     batch_size=batch_size,
     checkpoint_path=checkpoint_path,
+    epochs=epochs
 ).to(device)
 
 train_loader, val_loader, test_loader = get_loaders(
