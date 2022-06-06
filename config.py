@@ -10,8 +10,7 @@ document_length = -1
 epochs = 50
 weight_decay = 0.0
 
-
-experiment_buddy.register_defaults({'task': 'document classification with attention'})
+experiment_buddy.register(locals())
 writer = experiment_buddy.deploy(
     host="mila", disabled=False, wandb_kwargs={'project': "nlp"},
     sweep_definition="sweep.yaml"
