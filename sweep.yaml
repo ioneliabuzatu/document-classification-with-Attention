@@ -1,9 +1,9 @@
-program: run.py
 method: random
 metric:
-  name: validation_accuracy
   goal: maximize
+  name: validation_accuracy
 parameters:
   lr:
     min: 0.0001
     max: 0.1
+program: run.py
