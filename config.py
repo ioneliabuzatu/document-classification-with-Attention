@@ -13,5 +13,6 @@ weight_decay = 0.0
 experiment_buddy.register(locals())
 writer = experiment_buddy.deploy(
     host="mila", disabled=False, wandb_kwargs={'project': "nlp"},
-    sweep_definition="sweep.yaml"
+    sweep_definition="sweep.yaml",
+    proc_num=100
 )
