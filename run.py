@@ -17,7 +17,7 @@ from classification_baseline_attention_model import train_and_evaluate
 experiment_buddy.register_defaults({'task': 'document classification with attention'})
 writer = experiment_buddy.deploy(
     host="mila", disabled=False, wandb_kwargs={'project': "nlp"},
-    # sweep_definition="sweep.yaml"
+    sweep_definition="sweep.yaml"
 )
 
 whoami = getpass.getuser()

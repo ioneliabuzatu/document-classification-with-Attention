@@ -6,4 +6,13 @@ parameters:
   lr:
     min: 0.0001
     max: 0.1
-program: run.py
+  which_optimizer:
+    values: ["adam", "sgd"]
+  attention:
+    values: ['dot', 'additive', 'multiplicative']
+  batch_size:
+    values: [32, 64, 128, 256]
+  hidden_size:
+    values: [250, 512, 1024]
+  weight_decay:
+    values: [0.0, 0.1, 0.2, 0.3]
