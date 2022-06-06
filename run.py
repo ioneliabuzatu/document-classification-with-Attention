@@ -3,6 +3,7 @@ import os
 import random
 from pathlib import Path
 
+import config
 import experiment_buddy
 import numpy as np
 import torch
@@ -17,7 +18,7 @@ from classification_baseline_attention_model import train_and_evaluate
 experiment_buddy.register_defaults({'task': 'document classification with attention'})
 writer = experiment_buddy.deploy(
     host="mila", disabled=False, wandb_kwargs={'project': "nlp"},
-    # sweep_definition="sweep.yaml"
+    sweep_definition="sweep.yaml"
 )
 
 whoami = getpass.getuser()
@@ -49,35 +50,28 @@ print("device:", device)
 os.system('nvidia-smi')
 name_dataset_size = "small"
 
-batch_size = 32
-document_length = -1
-hidden_size = 512
-lr = 1e-4
-which_optimizer = 'adam'
-attention = "dot"
-epochs = 50
 
 tokenizer = get_tokenizer(data_path=f'{root_data}.{name_dataset_size}.train.txt', save_path=tokenizer_save_path)
 embedding = get_initial_embedding(path=glove_path, tokenizer=tokenizer, save_path=embedding_save_path)
 
 model = ClassificationAttentionModel(
     embedding.weight.clone(),
-    attention_type=attention,
-    hidden_size=hidden_size,
-    batch_size=batch_size,
+    attention_type=config.attention,
+    hidden_size=config.hidden_size,
+    batch_size=config.batch_size,
     checkpoint_path=checkpoint_path,
-    epochs=epochs
+    epochs=config.epochs
 ).to(device)
 
 train_loader, val_loader, test_loader = get_loaders(
-    root_data, name_dataset_size, batch_size, tokenizer, document_length=document_length)
+    root_data, name_dataset_size, config.batch_size, tokenizer, document_length=config.document_length)
 
-if which_optimizer == 'adam':
-    weight_decay = 0.0
-    optimizer = Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-if which_optimizer == 'sgd':
+if config.which_optimizer == 'adam':
+    weight_decay = config.weight_decay
+    optimizer = Adam(model.parameters(), lr=config.lr, weight_decay=weight_decay)
+if config.which_optimizer == 'sgd':
     momentum = 0.95
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum)
+    optimizer = torch.optim.SGD(model.parameters(), lr=config.lr, momentum=momentum)
 
 test_acc = train_and_evaluate(model, optimizer, train_loader, val_loader, test_loader, writer)
 
