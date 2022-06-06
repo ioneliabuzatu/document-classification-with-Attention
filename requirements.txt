@@ -5,7 +5,6 @@ scikit-learn
 scipy
 seaborn
 sklearn
-SQLAlchemy
 stevedore
 tensorboard
 tensorboard-data-server
