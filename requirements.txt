@@ -17,3 +17,7 @@ tokenizers
 tqdm
 transformers
 wandb
+python-dateutil
+six
+PyYAML
+typing_extensions
