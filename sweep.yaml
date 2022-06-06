@@ -4,10 +4,6 @@ metric:
   name: validation_accuracy
   goal: maximize
 parameters:
-  learning_rate:
+  lr:
     min: 0.0001
     max: 0.1
-  optim:
-    values: ["adam", "sgd"]
-  attention:
-    values: ['dot', 'additive', 'multiplicative']
